@@ -7,34 +7,41 @@ import {
   Query,
   UseGuards,
   Req,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TipsService, TipFilterOptions } from './tips.service';
 import { CreateTipDto } from './dto/create-tip.dto';
 import { Tip } from '../entities/tip.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TipCreationThrottle } from '../config/throttle.config';
 
+@ApiTags('tips')
 @Controller('tips')
 export class TipsController {
   constructor(private readonly tipsService: TipsService) {}
 
+  @ApiOperation({ summary: 'Create a new tip' })
   @Post()
   @TipCreationThrottle()
   async createTip(@Body() createTipDto: CreateTipDto): Promise<Tip> {
     if (!createTipDto.senderWallet && !createTipDto.transactionHash) {
-      throw new Error(
+      throw new BadRequestException(
         'senderWallet is required when no transactionHash is provided',
       );
     }
     return this.tipsService.createTip(createTipDto);
   }
 
+  @ApiOperation({ summary: 'Get a tip by ID' })
   @Get(':id')
-  async getTip(@Param('id') id: string): Promise<Tip | null> {
+  async getTip(@Param('id') id: string): Promise<Tip> {
     return this.tipsService.getTipById(id);
   }
 
+  @ApiOperation({ summary: 'Get tips received by the authenticated user' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('my/received')
   async getMyReceivedTips(
@@ -48,7 +55,15 @@ export class TipsController {
     @Query('maxAmount') maxAmount?: number,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
-  ) {
+  ): Promise<{
+    data: Tip[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  }> {
     const filterOptions: TipFilterOptions = {
       page: +page,
       limit: +limit,
@@ -64,6 +79,8 @@ export class TipsController {
     return this.tipsService.getTipsByCreator(req.user!.id, filterOptions);
   }
 
+  @ApiOperation({ summary: 'Get tips sent by the authenticated user' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('my/sent')
   async getMySentTips(
@@ -77,7 +94,15 @@ export class TipsController {
     @Query('maxAmount') maxAmount?: number,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
-  ) {
+  ): Promise<{
+    data: Tip[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  }> {
     const filterOptions: TipFilterOptions = {
       page: +page,
       limit: +limit,
@@ -93,6 +118,7 @@ export class TipsController {
     return this.tipsService.getTipsBySupporter(req.user!.id, filterOptions);
   }
 
+  @ApiOperation({ summary: 'Get tips by wallet address' })
   @Get('wallet/:walletAddress')
   async getTipsByWallet(
     @Param('walletAddress') walletAddress: string,
@@ -128,12 +154,22 @@ export class TipsController {
     return this.tipsService.getTipsByWallet(walletAddress, filterOptions);
   }
 
+  @ApiOperation({ summary: 'Get tip statistics for the authenticated user' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('my/stats')
-  async getMyStats(@Req() req: Request) {
+  async getMyStats(@Req() req: Request): Promise<
+    Array<{
+      totalAmount: string;
+      totalTips: string;
+      asset: string;
+      assetIssuer: string | null;
+    }>
+  > {
     return this.tipsService.getTipStats(req.user!.id);
   }
 
+  @ApiOperation({ summary: 'Confirm a tip with a transaction hash' })
   @Post(':id/confirm')
   @TipCreationThrottle()
   async confirmTip(
@@ -141,5 +177,15 @@ export class TipsController {
     @Body('transactionHash') transactionHash: string,
   ): Promise<Tip> {
     return this.tipsService.confirmTip(id, transactionHash);
+  }
+
+  @ApiOperation({
+    summary: 'Verify a tip against Horizon and the Soroban contract',
+  })
+  @Post(':id/verify-onchain')
+  async verifyOnChain(
+    @Param('id') id: string,
+  ): Promise<import('./tips.service').OnChainTipVerificationResult> {
+    return this.tipsService.verifyTipOnChain(id);
   }
 }

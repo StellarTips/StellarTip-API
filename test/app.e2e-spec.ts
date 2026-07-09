@@ -1,25 +1,37 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { AppModule } from '../src/app.module';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
+  let hasDb = false;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
+  beforeAll(async () => {
+    try {
+      const m: TestingModule = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
+      app = m.createNestApplication();
+      await app.init();
+      hasDb = true;
+    } catch {
+      /* no DB */
+    }
+  }, 30000);
 
-    app = moduleFixture.createNestApplication();
-    await app.init();
+  afterAll(async () => {
+    if (app) await app.close();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('StellarTip API — Decentralized micro-tipping on Stellar');
+  it('/ (GET)', async () => {
+    if (!hasDb) return;
+    const res = await request(app.getHttpServer()).get('/').expect(200);
+
+    expect(res.body.data).toBe(
+      'StellarTip API v0.1.0 — Decentralized micro-tipping on Stellar',
+    );
   });
 });

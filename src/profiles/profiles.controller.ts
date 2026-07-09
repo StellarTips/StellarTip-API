@@ -17,16 +17,20 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { CacheInterceptor } from '@nestjs/cache-manager';
 import { ProfilesService } from './profiles.service';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../entities/user.entity';
 
+@ApiTags('profiles')
 @Controller('profiles')
 export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
 
+  @ApiOperation({ summary: 'Get tipping info for a creator profile' })
   @Get(':username/tipping-info')
   async getTippingInfo(
     @Param('username') username: string,
@@ -34,11 +38,13 @@ export class ProfilesController {
     return this.profilesService.getTippingInfo(username);
   }
 
+  @ApiOperation({ summary: 'Get public profile by username' })
   @Get(':username')
   async getProfile(@Param('username') username: string): Promise<User | null> {
     return this.profilesService.getProfile(username);
   }
 
+  @ApiOperation({ summary: 'Search profiles by query' })
   @Get()
   async searchProfiles(@Query('q') query: string): Promise<User[]> {
     if (!query) {
@@ -47,6 +53,21 @@ export class ProfilesController {
     return this.profilesService.searchProfiles(query);
   }
 
+  @ApiOperation({ summary: 'Get creator analytics dashboard (cached 5 min)' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(CacheInterceptor)
+  @Get('me/analytics')
+  async getAnalytics(
+    @Req() req: Request,
+    @Query('period') period?: string,
+    @Query('asset') asset?: string,
+  ): Promise<Record<string, unknown>> {
+    return this.profilesService.getAnalytics(req.user!.id, period, asset);
+  }
+
+  @ApiOperation({ summary: 'Update authenticated user profile' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Put('me')
   async updateProfile(
@@ -56,6 +77,8 @@ export class ProfilesController {
     return this.profilesService.updateProfile(req.user!.id, updateDto);
   }
 
+  @ApiOperation({ summary: 'Update social links on profile' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Patch('me/social-links')
   async updateSocialLinks(
@@ -65,6 +88,8 @@ export class ProfilesController {
     return this.profilesService.updateSocialLinks(req.user!.id, socialLinksDto);
   }
 
+  @ApiOperation({ summary: 'Upload profile avatar image' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('me/avatar')
   @UseInterceptors(FileInterceptor('avatar'))
